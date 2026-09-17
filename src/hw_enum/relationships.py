@@ -3,52 +3,71 @@ from pathlib import Path
 
 
 @dataclass
-class SysfsRelationship:
+class SysfsObservation:
     source: str
-    relation: str
-    target: str
+    entry: str
+    kind: str
+    target: str = ""
 
 
 @dataclass
 class SysfsObject:
     path: str
     name: str
-    relationships: list[SysfsRelationship] = field(default_factory=list)
+    observations: list[SysfsObservation] = field(default_factory=list)
 
 
-def _relationship_target(path: Path) -> str:
+def _resolve(path: Path) -> str:
     try:
         return str(path.resolve())
     except (FileNotFoundError, OSError):
         return ""
 
 
-def collect_relationships(path: Path) -> list[SysfsRelationship]:
-    relationships = []
+def _entry_kind(path: Path) -> str:
+    if path.is_symlink():
+        return "symlink"
+
+    if path.is_dir():
+        return "directory"
+
+    if path.is_file():
+        return "file"
+
+    return "other"
+
+
+def collect_observations(path: Path) -> list[SysfsObservation]:
+    observations = []
 
     try:
         entries = sorted(path.iterdir())
     except (FileNotFoundError, PermissionError, OSError):
-        return relationships
+        return observations
 
     for entry in entries:
-        if not entry.is_symlink():
+        kind = _entry_kind(entry)
+
+        if kind == "symlink":
+            observations.append(
+                SysfsObservation(
+                    source=str(path),
+                    entry=entry.name,
+                    kind=kind,
+                    target=_resolve(entry),
+                )
+            )
             continue
 
-        target = _relationship_target(entry)
-
-        if not target:
-            continue
-
-        relationships.append(
-            SysfsRelationship(
+        observations.append(
+            SysfsObservation(
                 source=str(path),
-                relation=entry.name,
-                target=target,
+                entry=entry.name,
+                kind=kind,
             )
         )
 
-    return relationships
+    return observations
 
 
 def collect_sysfs_object(path: str | Path) -> SysfsObject:
@@ -57,15 +76,30 @@ def collect_sysfs_object(path: str | Path) -> SysfsObject:
     return SysfsObject(
         path=str(object_path),
         name=object_path.name,
-        relationships=collect_relationships(object_path),
+        observations=collect_observations(object_path),
     )
 
 
-def walk_relationships(
+def _child_directories(
+    path: Path,
+    observations: list[SysfsObservation],
+) -> list[Path]:
+    children = []
+
+    for observation in observations:
+        if observation.kind != "directory":
+            continue
+
+        children.append(path / observation.entry)
+
+    return children
+
+
+def walk_observations(
     path: str | Path,
     max_depth: int = 3,
-) -> list[SysfsRelationship]:
-    relationships = []
+) -> list[SysfsObservation]:
+    observations = []
     visited = set()
 
     def walk(current: Path, depth: int) -> None:
@@ -82,18 +116,18 @@ def walk_relationships(
 
         visited.add(resolved)
 
-        current_relationships = collect_relationships(current)
-        relationships.extend(current_relationships)
+        current_observations = collect_observations(current)
+        observations.extend(current_observations)
 
-        for relationship in current_relationships:
-            target = Path(relationship.target)
-
-            if target.is_dir():
-                walk(target, depth + 1)
+        for child in _child_directories(
+            current,
+            current_observations,
+        ):
+            walk(child, depth + 1)
 
     walk(Path(path), 0)
 
-    return relationships
+    return observations
 
 
 def enumerate_relationships(path: str | Path) -> None:
@@ -102,35 +136,54 @@ def enumerate_relationships(path: str | Path) -> None:
     print(f"=== SYSFS OBJECT: {obj.name} ===")
     print(f"Path: {obj.path}")
 
-    if not obj.relationships:
-        print("Relationships: (none or unavailable)")
+    if not obj.observations:
+        print("Observations: (none or unavailable)")
         return
 
-    print("Relationships:")
+    print("Observations:")
 
-    for relationship in obj.relationships:
-        print(f"  {relationship.relation} -> {relationship.target}")
+    for observation in obj.observations:
+        if observation.kind == "symlink":
+            print(
+                f"  {observation.entry} "
+                f"[symlink] -> {observation.target or '(unresolved)'}"
+            )
+        else:
+            print(
+                f"  {observation.entry} "
+                f"[{observation.kind}]"
+            )
 
 
 def enumerate_relationship_tree(
     path: str | Path,
     max_depth: int = 3,
 ) -> None:
-    relationships = walk_relationships(path, max_depth=max_depth)
+    observations = walk_observations(
+        path,
+        max_depth=max_depth,
+    )
 
-    print(f"=== SYSFS RELATIONSHIP WALK: {path} ===")
+    print(f"=== SYSFS OBSERVATION WALK: {path} ===")
 
-    if not relationships:
+    if not observations:
         print("(none or unavailable)")
         return
 
-    for relationship in relationships:
-        print(
-            f"{relationship.source} "
-            f"--{relationship.relation}--> "
-            f"{relationship.target}"
-        )
+    for observation in observations:
+        if observation.kind == "symlink":
+            print(
+                f"{observation.source} "
+                f"--{observation.entry}--> "
+                f"{observation.target or '(unresolved)'}"
+            )
+        else:
+            print(
+                f"{observation.source} "
+                f"--contains {observation.entry} "
+                f"[{observation.kind}]"
+            )
 
 
 if __name__ == "__main__":
-    enumerate_relationship_tree("/sys/bus/usb/devices/3-2:1.0")
+    enumerate_relationship_tree("/sys/bus/usb/devices/3-2")
