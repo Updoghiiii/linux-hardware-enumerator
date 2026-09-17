@@ -6,28 +6,64 @@ from hw_enum.interpretation import interpret_observation
 from hw_enum.graph import build_graph, enumerate_graph
 
 
-def enumerate_sysfs() -> None:
-    target = Path("/sys/bus/usb/devices/3-2")
+SYSFS_BUS = Path("/sys/bus")
 
+
+def discover_bus_objects() -> list[Path]:
+    objects = []
+
+    try:
+        buses = sorted(SYSFS_BUS.iterdir())
+    except (FileNotFoundError, PermissionError, OSError):
+        return objects
+
+    for bus in buses:
+        if not bus.is_dir():
+            continue
+
+        devices = bus / "devices"
+
+        if not devices.is_dir():
+            continue
+
+        try:
+            entries = sorted(devices.iterdir())
+        except (FileNotFoundError, PermissionError, OSError):
+            continue
+
+        for entry in entries:
+            objects.append(entry)
+
+    return objects
+
+
+def enumerate_sysfs() -> None:
     print("\n=== GENERIC SYSFS DISCOVERY ===")
 
-    if not target.exists():
-        print(f"Target unavailable: {target}")
+    objects = discover_bus_objects()
+
+    if not objects:
+        print("(none or unavailable)")
         return
 
-    observations = walk_observations(
-        target,
-        max_depth=5,
-    )
+    print(f"Discovered {len(objects)} bus objects.")
 
-    interpretations = [
-        interpret_observation(observation)
-        for observation in observations
-    ]
+    for target in objects:
+        observations = walk_observations(
+            target,
+            max_depth=5,
+        )
 
-    graph = build_graph(interpretations)
+        interpretations = [
+            interpret_observation(observation)
+            for observation in observations
+        ]
 
-    enumerate_graph(graph)
+        graph = build_graph(interpretations)
+
+        if graph.relationships:
+            print(f"\n--- {target} ---")
+            enumerate_graph(graph)
 
 
 def main():
