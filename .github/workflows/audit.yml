@@ -19,3 +19,5 @@ jobs:
         run: python -m compileall -q src tools
       - name: Audit machine-readable inventory
         run: python tools/inventory_audit.py
+      - name: Audit JSON CLI
+        run: python tools/cli_audit.py
