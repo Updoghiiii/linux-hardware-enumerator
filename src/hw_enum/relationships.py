@@ -70,6 +70,19 @@ def collect_observations(path: Path) -> list[SysfsObservation]:
     return observations
 
 
+def collect_relationships(path: str | Path) -> list[SysfsObservation]:
+    """Return direct sysfs relationship links for one object.
+
+    A symlink is evidence that Linux exposes a relationship. This function does
+    not interpret the relationship beyond preserving the entry name and target.
+    """
+    return [
+        observation
+        for observation in collect_observations(Path(path))
+        if observation.kind == "symlink"
+    ]
+
+
 def collect_sysfs_object(path: str | Path) -> SysfsObject:
     object_path = Path(path)
 

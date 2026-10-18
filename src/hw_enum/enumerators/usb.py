@@ -64,11 +64,6 @@ def _is_usb_device(path: Path) -> bool:
     return ":" not in path.name and "-" in path.name
 
 
-def _parse_device_name(name: str) -> tuple[int, int]:
-    bus, device = name.split("-", 1)
-    return int(bus), int(device.split(".", 1)[0])
-
-
 def _parse_interface(path: Path) -> USBInterface:
     return USBInterface(
         sysfs_name=path.name,
@@ -111,12 +106,10 @@ def _parent_name(device_path: Path) -> str:
 
 
 def _parse_device(path: Path) -> USBDevice:
-    bus_number, device_number = _parse_device_name(path.name)
-
     return USBDevice(
         sysfs_name=path.name,
-        bus_number=bus_number,
-        device_number=device_number,
+        bus_number=_read_int(path / "busnum"),
+        device_number=_read_int(path / "devnum"),
         parent=_parent_name(path),
         vendor_id=_read(path / "idVendor"),
         product_id=_read(path / "idProduct"),

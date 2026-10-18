@@ -170,6 +170,55 @@ The machine-readable representation should make it possible for another
 program to consume the hardware inventory without having to understand the
 underlying Linux interfaces itself.
 
+
+
+## Machine-readable integration
+
+The enumerator now exposes a versioned JSON snapshot intended for software such
+as Dave to consume directly.
+
+Install the project as a normal Python package:
+
+```bash
+python3 -m pip install .
+```
+
+Then collect a bounded JSON inventory:
+
+```bash
+linux-hardware-enumerator --json --sysfs-limit 4096
+```
+
+Pretty output is available for manual inspection:
+
+```bash
+linux-hardware-enumerator --json --pretty
+```
+
+The JSON root contains:
+
+- `schema` and `schema_version` so consumers can reject incompatible data;
+- collection time and host/kernel identity;
+- explicit availability status for each evidence source;
+- structured ALSA/ASoC audio observations;
+- structured USB devices and interfaces;
+- a bounded generic sysfs bus-object inventory with direct relationship links,
+  driver names, and module names when Linux exposes them.
+
+The JSON interface deliberately preserves **unavailable** separately from
+**absent**. A missing or inaccessible source is not evidence that hardware does
+not exist.
+
+The human-readable CLI remains available. It now includes the existing USB
+collector as well as audio and generic sysfs discovery.
+
+For independent validation:
+
+```bash
+python3 -m compileall -q src tools
+python3 tools/inventory_audit.py
+```
+
 ## Development strategy
 
 Development begins with audio because it provides multiple layers of Linux
